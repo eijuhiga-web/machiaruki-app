@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>コースをつくる（先生用） - まちあるき学習</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <div class="editor-layout">
+    <div class="editor-side">
+      <h1 style="font-size:18px;color:#1f7a5a;margin:0 0 4px;">🗺️ コースをつくる</h1>
+      <p class="muted" style="margin:0 0 12px;">先生用エディタ</p>
+
+      <div class="hint">
+        ① 地図をクリックしてスポットを追加 → ② 説明・課題・クイズを入力 → ③ 「生徒用リンクをコピー」して配布
+      </div>
+
+      <div class="field">
+        <label>コース名</label>
+        <input id="courseTitle" placeholder="例：那覇まちあるき 歴史探訪" />
+      </div>
+      <div class="field">
+        <label>コースの説明（任意）</label>
+        <textarea id="courseDesc" rows="2" placeholder="このコースのねらい・対象など"></textarea>
+      </div>
+
+      <details style="margin-bottom:12px;">
+        <summary style="cursor:pointer;font-size:13px;font-weight:700;color:#1f7a5a;">🔑 ウォークラリー設定（文字あつめ・任意）</summary>
+        <div style="padding-top:10px;">
+          <div class="field"><label>キーワード（あつめた文字の正解）</label><input id="courseKeyword" placeholder="例：せかいいさん" /></div>
+          <div class="field"><label>キーワードのヒント</label><input id="courseKeywordHint" placeholder="例：首里城も玉陵もこれに登録されている！" /></div>
+          <div class="field"><label>ゴールの案内文</label><textarea id="courseGoalText" rows="2" placeholder="例：守礼門に集合！先生にキーワードを伝えてゴール！"></textarea></div>
+          <div class="field"><label>こまったときの連絡先</label><input id="courseContact" placeholder="例：引率（比嘉）090-…／那覇GC 098-…" /></div>
+          <p class="muted">※各スポットの「あつめる文字」を順に並べるとキーワードになります。</p>
+        </div>
+      </details>
+
+      <div class="toolbar">
+        <button class="btn small primary" id="addSpotBtn">＋ 地図中心にスポット追加</button>
+      </div>
+      <p class="muted">地図をクリックしてもスポットを追加できます。</p>
+
+      <div class="divider"></div>
+      <h2 style="font-size:15px;">スポット一覧</h2>
+      <div id="spotList"></div>
+
+      <!-- 選択中スポットの編集フォーム -->
+      <div id="spotEditor" style="display:none;">
+        <div class="divider"></div>
+        <h2 style="font-size:15px;" id="editorTitle">スポットを編集</h2>
+        <div class="field"><label>スポット名</label><input id="sName" /></div>
+        <div class="field">
+          <label>位置（緯度・経度）</label>
+          <div style="display:flex;gap:8px;">
+            <input id="sLat" placeholder="緯度" />
+            <input id="sLng" placeholder="経度" />
+          </div>
+          <p class="muted">地図上のマーカーをドラッグでも調整できます。</p>
+        </div>
+        <div class="field"><label>到着とみなす範囲（m）</label><input id="sRadius" type="number" value="40" /></div>
+        <div class="field">
+          <label><input type="checkbox" id="sGpsRequired" style="width:auto;vertical-align:middle;" checked /> GPSで近づかないと開かない（OFFにすると、どこからでも回答可。ウォークラリー向き）</label>
+        </div>
+        <div class="field"><label>あつめる文字（ウォークラリー用／任意）</label><input id="sCollectLetter" maxlength="2" placeholder="例：せ" /></div>
+        <div class="field"><label>スポット情報・解説</label><textarea id="sInfo" rows="4"></textarea></div>
+        <div class="field"><label>課題（写真・メモの指示／任意）</label><textarea id="sTask" rows="2" placeholder="例：建物の特徴を写真に撮ろう"></textarea></div>
+
+        <div class="divider"></div>
+        <h3 style="font-size:14px;">クイズ（任意）</h3>
+        <div class="field"><label>問題文</label><textarea id="qQuestion" rows="2"></textarea></div>
+        <div class="field"><label>選択肢（1行に1つ）</label><textarea id="qChoices" rows="4" placeholder="選択肢A&#10;選択肢B&#10;選択肢C"></textarea></div>
+        <div class="field"><label>正解の番号（1から）</label><input id="qAnswer" type="number" min="1" value="1" /></div>
+        <div class="field"><label>ヒント（まちがえたとき表示／任意）</label><textarea id="qHint" rows="2"></textarea></div>
+        <div class="field"><label>解説（正解後に表示／任意）</label><textarea id="qExplain" rows="2"></textarea></div>
+
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="btn primary" id="saveSpotBtn">この内容を保存</button>
+          <button class="btn secondary small" id="deleteSpotBtn">削除</button>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <h2 style="font-size:15px;">配布・保存</h2>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn primary" id="shareBtn">🔗 生徒用リンクをコピー</button>
+        <button class="btn outline" id="previewBtn">▶ プレビュー（生徒画面）</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn secondary small" id="exportBtn">JSON保存</button>
+          <label class="btn secondary small" style="cursor:pointer;">JSON読込
+            <input type="file" id="importInput" accept="application/json" style="display:none;" />
+          </label>
+        </div>
+      </div>
+      <p class="muted" id="shareHint" style="margin-top:8px;"></p>
+    </div>
+
+    <div class="editor-map">
+      <div id="emap"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+  <script src="common.js"></script>
+  <script src="editor.js"></script>
+</body>
+</html>

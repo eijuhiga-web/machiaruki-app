@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>まちあるき学習</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <h1 id="courseTitle">まちあるき学習</h1>
+      <span class="progress-text" id="progressText">0 / 0</span>
+      <button class="link" id="keywordBtn" style="display:none;">🔑 キーワード</button>
+      <button class="link" id="reviewBtn">ふりかえり</button>
+    </div>
+    <div class="progress-bar"><span id="progressFill"></span></div>
+    <div class="letters-bar" id="lettersBar" style="display:none;"></div>
+
+    <div id="map"></div>
+
+    <div class="fab-row">
+      <button class="fab primary" id="locateBtn">📍 現在地へ</button>
+      <button class="fab" id="testToggle">🔓 練習モード</button>
+    </div>
+  </div>
+
+  <!-- スポット詳細シート -->
+  <div class="sheet-backdrop" id="sheetBackdrop"></div>
+  <div class="sheet" id="sheet">
+    <div class="sheet-handle"></div>
+    <div id="sheetContent"></div>
+  </div>
+
+  <!-- ふりかえり画面 -->
+  <div class="overlay" id="reviewOverlay">
+    <div class="inner">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <button class="btn small secondary" id="reviewClose">← もどる</button>
+        <h2 style="margin:0;font-size:18px;">ふりかえり</h2>
+      </div>
+      <div id="reviewContent"></div>
+    </div>
+  </div>
+
+  <!-- キーワード／ゴール画面 -->
+  <div class="overlay goal-overlay" id="goalOverlay">
+    <div class="inner" id="goalContent"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+  <script src="common.js"></script>
+  <script src="student.js"></script>
+</body>
+</html>
