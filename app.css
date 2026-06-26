@@ -216,3 +216,105 @@ textarea.memo { min-height: 80px; resize: vertical; }
   max-width: 90%; text-align:center;
 }
 .toast.show { opacity: .95; }
+
+/* ============ 品質UP：演出・ナビ・PWA・設定 ============ */
+
+/* 紙吹雪キャンバス */
+#fxCanvas { position: fixed; inset: 0; z-index: 1400; pointer-events: none; }
+
+/* トップバーのアイコンボタン（メニュー） */
+.iconbtn {
+  background: rgba(255,255,255,.18); color:#fff; border:none;
+  width: 38px; height: 38px; border-radius: 10px; font-size: 18px; cursor: pointer; flex: none;
+}
+.iconbtn:active { transform: scale(.95); }
+
+/* セーフエリア（ノッチ）対応 */
+.topbar { padding-top: max(10px, env(safe-area-inset-top)); }
+.fab-row { bottom: max(14px, calc(env(safe-area-inset-bottom) + 6px)); }
+
+/* メニューパネル（下から） */
+.menu-panel {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 1000;
+  background: var(--c-card); border-radius: 18px 18px 0 0; padding: 6px 12px 24px;
+  transform: translateY(100%); transition: transform .3s; box-shadow: 0 -6px 24px rgba(0,0,0,.2);
+}
+.menu-panel.open { transform: translateY(0); }
+.menu-item {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  background: none; border: none; border-bottom: 1px solid var(--c-line);
+  padding: 16px 6px; font-size: 16px; font-weight: 600; color: var(--c-text); cursor: pointer;
+}
+.menu-item:last-child { border-bottom: none; }
+.menu-item span { font-size: 22px; }
+.menu-item.danger { color: #c0392b; }
+.menu-item:active { background: #f3f4f2; }
+
+/* 次はここ！ナビバナー */
+.nav-banner {
+  position: absolute; left: 12px; right: 12px; bottom: 74px; z-index: 400;
+  display: flex; align-items: center; gap: 12px; text-align: left;
+  background: var(--c-primary); color: #fff; border: none;
+  border-radius: 14px; padding: 10px 14px; box-shadow: var(--shadow); cursor: pointer;
+}
+.nav-banner:active { transform: translateY(1px); }
+.nav-arrow {
+  font-size: 26px; font-weight: 800; flex: none;
+  width: 40px; height: 40px; border-radius: 999px; background: rgba(255,255,255,.2);
+  display: flex; align-items: center; justify-content: center;
+  transition: transform .3s ease;
+}
+.nav-text { display: flex; flex-direction: column; line-height: 1.25; }
+.nav-text b { font-size: 15px; }
+.nav-text small { font-size: 13px; opacity: .9; }
+.nav-banner.arrived-near { background: var(--c-accent); color: #5a3d00; }
+
+/* モーダル（オンボーディング・設定・電話） */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1200;
+  display: none; align-items: center; justify-content: center; padding: 18px;
+}
+.modal-backdrop.open { display: flex; }
+.modal {
+  background: var(--c-card); border-radius: 18px; padding: 22px 18px;
+  max-width: 480px; width: 100%; max-height: 86dvh; overflow-y: auto; box-shadow: var(--shadow);
+}
+.onb-step { text-align: center; }
+.onb-emoji { font-size: 54px; margin: 8px 0; }
+.onb-title { font-size: 20px; font-weight: 800; color: var(--c-primary); margin: 4px 0 10px; }
+.onb-body { font-size: 15px; line-height: 1.8; color: var(--c-text); }
+.onb-dots { display: flex; gap: 6px; justify-content: center; margin: 16px 0; }
+.onb-dots i { width: 8px; height: 8px; border-radius: 999px; background: #d2d6d1; }
+.onb-dots i.on { background: var(--c-primary); }
+
+/* 設定セグメント */
+.setting-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; font-size: 16px; }
+.seg { display: inline-flex; border: 1.5px solid var(--c-primary); border-radius: 999px; overflow: hidden; }
+.seg button { border: none; background: #fff; color: var(--c-primary); padding: 8px 16px; font-size: 14px; font-weight: 700; cursor: pointer; }
+.seg button.on { background: var(--c-primary); color: #fff; }
+
+/* 電話モーダル */
+.call-num {
+  display: flex; align-items: center; gap: 12px; text-decoration: none;
+  background: #eef7f2; color: var(--c-primary); border: 1.5px solid var(--c-primary);
+  border-radius: 12px; padding: 14px; font-size: 17px; font-weight: 800; margin: 10px 0;
+}
+.call-num span { font-size: 24px; }
+
+/* 文字大きくモード */
+body.font-large { font-size: 18px; }
+body.font-large .info-text, body.font-large .choice, body.font-large .menu-item { font-size: 17px; }
+body.font-large .sheet h2 { font-size: 22px; }
+body.font-large .nav-text b { font-size: 17px; }
+
+/* マーカー：ピン型・アニメ */
+.spot-marker { transition: transform .2s; }
+.spot-marker.active { transform: scale(1.18); }
+@keyframes pop { 0% { transform: scale(0.4); } 70% { transform: scale(1.2); } 100% { transform: scale(1); } }
+.spot-marker.justdone { animation: pop .5s; }
+
+/* バッジ・メダル */
+.medal { font-size: 64px; line-height: 1; }
+.stamp-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.stamp { width: 44px; height: 44px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; border: 2px dashed #cfd4cf; color: #aab0aa; }
+.stamp.done { background: #e4f4ec; border: 2px solid var(--c-arrived); color: var(--c-arrived); }

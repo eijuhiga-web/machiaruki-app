@@ -14,6 +14,7 @@
   let testMode = false;      // 練習モード（GPSなしで開錠）
   let currentSpotId = null;
   let lastPos = null;        // {lat, lng, acc}
+  let navTargetId = null;     // 「次はここ！」の対象スポット
 
   /* ---------------- 初期化 ---------------- */
   async function init() {
@@ -26,7 +27,9 @@
     if (err) { showNoCourse(err); return; }
 
     progress = Machi.loadProgress(course.id);
+    Machi.saveLastCourse(course); // ホーム画面起動時に再開できるよう保存
     $('courseTitle').textContent = course.title || 'まちあるき学習';
+    applyFont();
 
     initMap();
     renderMarkers();
@@ -36,6 +39,11 @@
     }
     updateProgress();
     bindUI();
+    maybeShowOnboarding();
+  }
+
+  function applyFont() {
+    document.body.classList.toggle('font-large', Machi.settings.font === 'large');
   }
 
   function showNoCourse(msg) {
@@ -98,6 +106,13 @@
     if (idx >= 0 && markers[spotId]) markers[spotId].setIcon(spotIcon(course.spots[idx], idx));
   }
 
+  function popMarker(spotId) {
+    const m = markers[spotId];
+    if (!m || !m._icon) return;
+    const el = m._icon.querySelector('.spot-marker');
+    if (el) { el.classList.add('justdone'); setTimeout(() => el.classList.remove('justdone'), 600); }
+  }
+
   /* ---------------- 進捗 ---------------- */
   function isComplete(spot) {
     return Machi.isSpotComplete(spot, Machi.getSpotProgress(progress, spot.id));
@@ -109,6 +124,7 @@
     $('progressText').textContent = done + ' / ' + total;
     $('progressFill').style.width = total ? (done / total) * 100 + '%' : '0%';
     updateLettersBar();
+    updateNav();
   }
 
   function hasKeyword() {
@@ -138,15 +154,62 @@
       toast(testMode ? '練習モード：GPSなしで開錠できます' : '練習モードを解除しました');
       if (currentSpotId) openSheet(currentSpotId); // 再描画
     });
-    $('reviewBtn').addEventListener('click', openReview);
+    $('reviewBtn').addEventListener('click', () => { closeMenu(); openReview(); });
     $('reviewClose').addEventListener('click', () => $('reviewOverlay').classList.remove('open'));
     $('sheetBackdrop').addEventListener('click', closeSheet);
-    $('keywordBtn').addEventListener('click', () => openGoal(false));
+    $('keywordBtn').addEventListener('click', () => { closeMenu(); openGoal(false); });
+
+    // メニュー
+    $('menuBtn').addEventListener('click', openMenu);
+    $('menuBackdrop').addEventListener('click', closeMenu);
+    $('helpBtn').addEventListener('click', () => { closeMenu(); showOnboarding(true); });
+    $('settingsBtn').addEventListener('click', () => { closeMenu(); openSettings(); });
+    $('callBtn').addEventListener('click', () => { closeMenu(); openCall(); });
+
+    // 設定
+    $('settingsClose').addEventListener('click', () => $('settingsModal').classList.remove('open'));
+    document.querySelectorAll('#fontSeg button').forEach((b) =>
+      b.addEventListener('click', () => { Machi.settings.font = b.dataset.font; applyFont(); syncSettingsUI(); }));
+    document.querySelectorAll('#soundSeg button').forEach((b) =>
+      b.addEventListener('click', () => { Machi.settings.sound = b.dataset.sound === 'on'; if (Machi.settings.sound) Machi.sound('tap'); syncSettingsUI(); }));
+
+    // 次はここ！ナビ
+    $('navBanner').addEventListener('click', () => { if (navTargetId) openSheet(navTargetId); });
+
+    // 端末の向き（方位）→ 矢印の向きに反映
+    enableHeading();
+
+    // モーダルの背景タップで閉じる
+    ['onboarding', 'settingsModal', 'callModal'].forEach((id) => {
+      $(id).addEventListener('click', (e) => { if (e.target.id === id) $(id).classList.remove('open'); });
+    });
+  }
+
+  /* ---------------- メニュー ---------------- */
+  function openMenu() { $('menuPanel').classList.add('open'); $('menuBackdrop').classList.add('open'); }
+  function closeMenu() { $('menuPanel').classList.remove('open'); $('menuBackdrop').classList.remove('open'); }
+
+  /* ---------------- 端末の方位（コンパス） ---------------- */
+  let heading = null; // 度（北=0）
+  function enableHeading() {
+    function handler(e) {
+      let h = null;
+      if (e.webkitCompassHeading != null) h = e.webkitCompassHeading; // iOS
+      else if (e.alpha != null) h = 360 - e.alpha;
+      if (h != null) { heading = h; updateNav(); }
+    }
+    window.addEventListener('deviceorientationabsolute', handler, true);
+    window.addEventListener('deviceorientation', handler, true);
   }
 
   let watchId = null;
   function startLocate() {
     if (!navigator.geolocation) { toast('この端末では位置情報が使えません'); return; }
+    // iOSはコンパス利用に許可が必要
+    if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission().then((s) => { if (s === 'granted') enableHeading(); }).catch(() => {});
+    }
+    Machi.sound('tap');
     toast('現在地を取得中…');
     if (watchId != null) navigator.geolocation.clearWatch(watchId);
     watchId = navigator.geolocation.watchPosition(
@@ -172,6 +235,7 @@
       userCircle.setLatLng([lat, lng]).setRadius(acc);
     }
     checkArrivals();
+    updateNav();
     if (currentSpotId) refreshSheetDistance();
   }
 
@@ -186,7 +250,9 @@
         sp.arrived = true;
         Machi.saveProgress(course.id, progress);
         refreshMarker(spot.id);
+        popMarker(spot.id);
         updateProgress();
+        Machi.sound('arrive'); Machi.vibrate([120, 60, 120]); Machi.confetti({ count: 90 });
         toast('「' + spot.name + '」に到着！🎉');
       }
     });
@@ -200,6 +266,43 @@
   function distanceTo(spot) {
     if (!lastPos) return null;
     return Math.round(Machi.distanceMeters(lastPos.lat, lastPos.lng, spot.lat, spot.lng));
+  }
+
+  /* ---------------- 次はここ！ナビ ---------------- */
+  function nearestUnvisited() {
+    const remaining = course.spots.filter((s) => !isComplete(s));
+    if (!remaining.length) return null;
+    if (!lastPos) return remaining[0]; // GPS前は最初の未訪問
+    let best = null, bestD = Infinity;
+    remaining.forEach((s) => {
+      const d = Machi.distanceMeters(lastPos.lat, lastPos.lng, s.lat, s.lng);
+      if (d < bestD) { bestD = d; best = s; }
+    });
+    return best;
+  }
+
+  function updateNav() {
+    const banner = $('navBanner');
+    const target = nearestUnvisited();
+    if (!target) { banner.style.display = 'none'; navTargetId = null; return; }
+    navTargetId = target.id;
+    banner.style.display = 'flex';
+    $('navName').textContent = '次はここ！ ' + target.name.replace(/^MISSION\s*[①-⑨]+\s*/, '');
+    const d = distanceTo(target);
+    if (d == null) {
+      $('navDist').textContent = '「現在地へ」で道案内ON';
+      $('navArrow').textContent = '↑';
+      $('navArrow').style.transform = 'rotate(0deg)';
+      banner.classList.remove('arrived-near');
+    } else {
+      $('navDist').textContent = 'のこり 約 ' + d + ' m';
+      banner.classList.toggle('arrived-near', d <= (target.radius || 40) + 10);
+      const brg = Machi.bearing(lastPos.lat, lastPos.lng, target.lat, target.lng);
+      // 端末の向きが分かれば相対方向、無ければ北基準
+      const rel = heading != null ? (brg - heading + 360) % 360 : brg;
+      $('navArrow').textContent = '↑';
+      $('navArrow').style.transform = 'rotate(' + rel + 'deg)';
+    }
   }
 
   /* ---------------- スポット詳細シート ---------------- */
@@ -346,12 +449,15 @@
         refreshMarker(spot.id);
         updateProgress();
         if (correct) {
+          popMarker(spot.id);
+          Machi.sound('correct'); Machi.vibrate([100, 50, 100]); Machi.confetti({ count: 90 });
           toast(spot.collectLetter ? '正解！文字「' + spot.collectLetter + '」ゲット🎉' : '正解！🎉');
           // 全ミッションクリアでゴール画面
           if (hasKeyword() && course.spots.every(isComplete)) {
             setTimeout(() => { closeSheet(); openGoal(true); }, 700);
           }
         } else {
+          Machi.sound('wrong'); Machi.vibrate(80);
           toast('ざんねん！ ヒントを見てもう一度');
         }
       });
@@ -410,6 +516,69 @@
     $('goalContent').innerHTML = html;
     $('goalOverlay').classList.add('open');
     $('goalClose').addEventListener('click', () => $('goalOverlay').classList.remove('open'));
+    if (done && celebrate) {
+      Machi.sound('goal'); Machi.vibrate([200, 80, 200, 80, 300]);
+      Machi.confetti({ count: 220 });
+      setTimeout(() => Machi.confetti({ count: 160 }), 600);
+    }
+  }
+
+  /* ---------------- つかいかた（オンボーディング） ---------------- */
+  const ONB = [
+    { e: '🚶', t: 'まちを歩いて学ぼう', b: '地図のスポットをめぐって、写真やメモ・クイズにチャレンジ！ 楽しく学べるよ。' },
+    { e: '📍', t: 'スポットに近づこう', b: '「現在地へ」を押すと、今いる場所が地図に出るよ。スポットに近づくと、自動で「到着！」になるんだ。' },
+    { e: '🧭', t: '「次はここ！」を目印に', b: '画面の下に、次に行く場所と「のこり何メートル」「向き（矢印）」が出るよ。矢印の方へ進もう。' },
+    { e: '❓', t: 'クイズは何度でもOK', b: 'まちがえても大丈夫。ヒントを見て、正解するまで何度でもチャレンジできるよ。' },
+    { e: '🆘', t: 'こまったら先生へ', b: '右上の「☰」から「こまったら先生へ」で電話できるよ。はぐれないように、班でいっしょに歩こう！' },
+  ];
+  let onbIdx = 0;
+  function renderOnb() {
+    const s = ONB[onbIdx];
+    const dots = ONB.map((_, i) => '<i class="' + (i === onbIdx ? 'on' : '') + '"></i>').join('');
+    const last = onbIdx === ONB.length - 1;
+    $('onboardingCard').innerHTML =
+      '<div class="onb-step"><div class="onb-emoji">' + s.e + '</div>' +
+      '<div class="onb-title">' + s.t + '</div>' +
+      '<div class="onb-body">' + s.b + '</div>' +
+      '<div class="onb-dots">' + dots + '</div>' +
+      '<div style="display:flex;gap:8px;">' +
+      (onbIdx > 0 ? '<button class="btn secondary" id="onbPrev">もどる</button>' : '') +
+      '<button class="btn" id="onbNext">' + (last ? 'はじめる！' : 'つぎへ') + '</button></div></div>';
+    $('onbNext').addEventListener('click', () => {
+      Machi.sound('tap');
+      if (last) { $('onboarding').classList.remove('open'); localStorage.setItem('machi:onboarded', '1'); }
+      else { onbIdx++; renderOnb(); }
+    });
+    if ($('onbPrev')) $('onbPrev').addEventListener('click', () => { onbIdx--; renderOnb(); });
+  }
+  function showOnboarding() { onbIdx = 0; renderOnb(); $('onboarding').classList.add('open'); }
+  function maybeShowOnboarding() { if (!localStorage.getItem('machi:onboarded')) showOnboarding(); }
+
+  /* ---------------- 設定 ---------------- */
+  function syncSettingsUI() {
+    document.querySelectorAll('#fontSeg button').forEach((b) => b.classList.toggle('on', b.dataset.font === Machi.settings.font));
+    document.querySelectorAll('#soundSeg button').forEach((b) => b.classList.toggle('on', (b.dataset.sound === 'on') === Machi.settings.sound));
+  }
+  function openSettings() { syncSettingsUI(); $('settingsModal').classList.add('open'); }
+
+  /* ---------------- こまったら先生へ ---------------- */
+  function openCall() {
+    const nums = (course.contact || '').match(/0\d{1,4}[-\s]?\d{1,4}[-\s]?\d{3,4}/g) || [];
+    let html = '<h2 style="margin-top:0;">☎️ こまったら先生へ</h2>';
+    if (nums.length) {
+      html += '<p class="muted">タップで電話がかけられます。</p>';
+      nums.forEach((n) => {
+        const tel = n.replace(/[-\s]/g, '');
+        html += '<a class="call-num" href="tel:' + tel + '"><span>📞</span>' + Machi.esc(n) + '</a>';
+      });
+    }
+    if (course.contact) html += '<div class="goal-card" style="margin-top:8px;">' + Machi.esc(course.contact) + '</div>';
+    if (course.goalText) html += '<div class="goal-card" style="background:#fff3d6;border-color:#ffe6a8;">🏁 ' + Machi.esc(course.goalText) + '</div>';
+    if (!nums.length && !course.contact) html += '<p>先生の連絡先がコースに登録されていません。先生に直接つたえてください。</p>';
+    html += '<button class="btn secondary" id="callClose" style="margin-top:12px;">とじる</button>';
+    $('callContent').innerHTML = html;
+    $('callModal').classList.add('open');
+    $('callClose').addEventListener('click', () => $('callModal').classList.remove('open'));
   }
 
   /* ---------------- ふりかえり ---------------- */
@@ -420,8 +589,14 @@
     const quizDone = quizzes.filter((s) => Machi.getSpotProgress(progress, s.id).quizCorrect != null);
     const quizOk = quizzes.filter((s) => Machi.getSpotProgress(progress, s.id).quizCorrect === true);
 
-    let html = '<div class="review-card" style="text-align:center;">' +
-      '<div>到着スポット</div><div class="score-big">' + done + ' / ' + total + '</div>';
+    const allDone = done === total && total > 0;
+    let html = '<div class="review-card" style="text-align:center;">';
+    if (allDone) html += '<div class="medal">🏅</div><div style="font-weight:800;color:#1f7a5a;margin-bottom:6px;">ぜんぶクリア！おつかれさま！</div>';
+    html += '<div>クリアしたスポット</div><div class="score-big">' + done + ' / ' + total + '</div>';
+    // スタンプ帳
+    html += '<div class="stamp-row" style="justify-content:center;">' +
+      course.spots.map((s, i) => '<div class="stamp' + (isComplete(s) ? ' done' : '') + '">' +
+        (isComplete(s) ? '✓' : (i + 1)) + '</div>').join('') + '</div>';
     if (quizzes.length) {
       html += '<div style="margin-top:8px;">クイズ正解数</div><div class="score-big">' +
         quizOk.length + ' / ' + quizzes.length + '</div>';

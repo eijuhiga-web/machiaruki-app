@@ -107,7 +107,25 @@
         console.warn('コースJSONの取得に失敗', e);
       }
     }
+    // ホーム画面から起動した時など、URLにコースが無ければ前回のコースを再開
+    try {
+      const last = localStorage.getItem('machi:lastCourse');
+      if (last) return JSON.parse(last);
+    } catch (e) {}
     return null;
+  };
+
+  Machi.saveLastCourse = function (course) {
+    try { localStorage.setItem('machi:lastCourse', JSON.stringify(course)); } catch (e) {}
+  };
+
+  // 2点間の方位角（度・北=0、時計回り）
+  Machi.bearing = function (lat1, lng1, lat2, lng2) {
+    const toRad = (d) => (d * Math.PI) / 180;
+    const y = Math.sin(toRad(lng2 - lng1)) * Math.cos(toRad(lat2));
+    const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+      Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lng2 - lng1));
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
   };
 
   Machi.buildShareLink = function (course) {
@@ -251,6 +269,100 @@
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  };
+
+  /* ====================================================
+     せってい（音・文字サイズ）
+     ==================================================== */
+  Machi.settings = {
+    get sound() { return localStorage.getItem('machi:sound') !== 'off'; },
+    set sound(v) { localStorage.setItem('machi:sound', v ? 'on' : 'off'); },
+    get font() { return localStorage.getItem('machi:font') || 'normal'; },
+    set font(v) { localStorage.setItem('machi:font', v); },
+  };
+
+  /* ====================================================
+     効果音（WebAudioで合成＝音声ファイル不要・オフラインOK）
+     ==================================================== */
+  let _ac = null;
+  function ac() {
+    if (!_ac) { try { _ac = new (global.AudioContext || global.webkitAudioContext)(); } catch (e) {} }
+    if (_ac && _ac.state === 'suspended') _ac.resume();
+    return _ac;
+  }
+  function tone(freq, start, dur, type, gain) {
+    const a = ac(); if (!a) return;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type || 'sine'; o.frequency.value = freq;
+    o.connect(g); g.connect(a.destination);
+    const t = a.currentTime + start;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain || 0.18, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  Machi.sound = function (name) {
+    if (!Machi.settings.sound) return;
+    if (name === 'correct' || name === 'arrive') {
+      tone(660, 0, 0.14, 'triangle'); tone(880, 0.12, 0.18, 'triangle');
+    } else if (name === 'goal') {
+      [523, 659, 784, 1046].forEach((f, i) => tone(f, i * 0.13, 0.22, 'triangle', 0.2));
+    } else if (name === 'wrong') {
+      tone(220, 0, 0.18, 'sawtooth', 0.12);
+    } else if (name === 'tap') {
+      tone(520, 0, 0.06, 'sine', 0.08);
+    }
+  };
+  Machi.vibrate = function (pattern) {
+    if (Machi.settings.sound && global.navigator && navigator.vibrate) {
+      try { navigator.vibrate(pattern); } catch (e) {}
+    }
+  };
+
+  /* ====================================================
+     紙吹雪（自前canvas＝ライブラリ不要・オフラインOK）
+     ==================================================== */
+  Machi.confetti = function (opts) {
+    opts = opts || {};
+    const canvas = document.getElementById('fxCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width = global.innerWidth;
+    const H = canvas.height = global.innerHeight;
+    const colors = ['#f0a500', '#d8402e', '#1f7a5a', '#2a9d76', '#ffd34d', '#4da3ff', '#ff7eb6'];
+    const N = opts.count || 140;
+    const parts = [];
+    for (let i = 0; i < N; i++) {
+      parts.push({
+        x: W / 2 + (Math.random() - 0.5) * W * 0.5,
+        y: H * 0.35 + (Math.random() - 0.5) * 60,
+        vx: (Math.random() - 0.5) * 9,
+        vy: Math.random() * -9 - 4,
+        g: 0.22 + Math.random() * 0.1,
+        s: 6 + Math.random() * 7,
+        rot: Math.random() * 6.28,
+        vr: (Math.random() - 0.5) * 0.3,
+        c: colors[(Math.random() * colors.length) | 0],
+        life: 0,
+      });
+    }
+    let frame = 0;
+    function step() {
+      ctx.clearRect(0, 0, W, H);
+      frame++;
+      let alive = false;
+      parts.forEach((p) => {
+        p.vy += p.g; p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.vx *= 0.99;
+        if (p.y < H + 20) alive = true;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.fillStyle = p.c; ctx.globalAlpha = Math.max(0, 1 - frame / 130);
+        ctx.fillRect(-p.s / 2, -p.s / 2, p.s, p.s * 0.6);
+        ctx.restore();
+      });
+      if (alive && frame < 140) requestAnimationFrame(step);
+      else ctx.clearRect(0, 0, W, H);
+    }
+    step();
   };
 
   global.Machi = Machi;

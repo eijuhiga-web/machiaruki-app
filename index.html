@@ -2,8 +2,14 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>まちあるき学習</title>
+  <meta name="theme-color" content="#1f7a5a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="まちあるき" />
+  <link rel="apple-touch-icon" href="icon-512.png" />
+  <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="app.css" />
 </head>
@@ -12,18 +18,34 @@
     <div class="topbar">
       <h1 id="courseTitle">まちあるき学習</h1>
       <span class="progress-text" id="progressText">0 / 0</span>
-      <button class="link" id="keywordBtn" style="display:none;">🔑 キーワード</button>
-      <button class="link" id="reviewBtn">ふりかえり</button>
+      <button class="iconbtn" id="menuBtn" aria-label="メニュー">☰</button>
     </div>
     <div class="progress-bar"><span id="progressFill"></span></div>
     <div class="letters-bar" id="lettersBar" style="display:none;"></div>
 
     <div id="map"></div>
 
+    <!-- 次はここ！ナビ -->
+    <button class="nav-banner" id="navBanner" style="display:none;">
+      <span class="nav-arrow" id="navArrow">↑</span>
+      <span class="nav-text"><b id="navName">—</b><small id="navDist"></small></span>
+    </button>
+
     <div class="fab-row">
       <button class="fab primary" id="locateBtn">📍 現在地へ</button>
       <button class="fab" id="testToggle">🔓 練習モード</button>
     </div>
+  </div>
+
+  <!-- メニュー -->
+  <div class="sheet-backdrop" id="menuBackdrop"></div>
+  <div class="menu-panel" id="menuPanel">
+    <div class="sheet-handle"></div>
+    <button class="menu-item" id="keywordBtn" style="display:none;"><span>🔑</span> キーワードを見る</button>
+    <button class="menu-item" id="reviewBtn"><span>📔</span> ふりかえり・記録</button>
+    <button class="menu-item" id="helpBtn"><span>📖</span> つかいかた</button>
+    <button class="menu-item" id="settingsBtn"><span>⚙️</span> 文字サイズ・音</button>
+    <button class="menu-item danger" id="callBtn"><span>☎️</span> こまったら先生へ</button>
   </div>
 
   <!-- スポット詳細シート -->
@@ -49,11 +71,51 @@
     <div class="inner" id="goalContent"></div>
   </div>
 
+  <!-- つかいかた（オンボーディング） -->
+  <div class="modal-backdrop" id="onboarding">
+    <div class="modal" id="onboardingCard"></div>
+  </div>
+
+  <!-- 設定 -->
+  <div class="modal-backdrop" id="settingsModal">
+    <div class="modal">
+      <h2 style="margin-top:0;">⚙️ せってい</h2>
+      <div class="setting-row">
+        <span>🔤 文字サイズ</span>
+        <div class="seg" id="fontSeg">
+          <button data-font="normal">標準</button>
+          <button data-font="large">大きく</button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <span>🔊 音・バイブ</span>
+        <div class="seg" id="soundSeg">
+          <button data-sound="on">ON</button>
+          <button data-sound="off">OFF</button>
+        </div>
+      </div>
+      <button class="btn" id="settingsClose" style="margin-top:14px;">とじる</button>
+    </div>
+  </div>
+
+  <!-- 困ったら先生へ -->
+  <div class="modal-backdrop" id="callModal">
+    <div class="modal" id="callContent"></div>
+  </div>
+
+  <canvas id="fxCanvas"></canvas>
   <div class="toast" id="toast"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
   <script src="common.js"></script>
   <script src="student.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function (e) { console.warn('SW登録失敗', e); });
+      });
+    }
+  </script>
 </body>
 </html>
