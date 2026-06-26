@@ -15,30 +15,60 @@
   let currentSpotId = null;
   let lastPos = null;        // {lat, lng, acc}
   let navTargetId = null;     // 「次はここ！」の対象スポット
+  let selector = null;        // コース選択（午後A/B/C）の親コース
+  let started = false;        // startCourse済みか（bindUIを一度だけ）
 
   /* ---------------- 初期化 ---------------- */
   async function init() {
-    course = await Machi.getCourseFromURL();
-    if (!course) {
-      showNoCourse();
+    const c = await Machi.getCourseFromURL();
+    if (!c) { showNoCourse(); return; }
+
+    // 選択モード（午後 A・B・C）
+    if (c.selectMode && Array.isArray(c.choose)) {
+      selector = c;
+      Machi.saveLastCourse(c);
+      const chosenId = localStorage.getItem('machi:chosen:' + c.id);
+      if (chosenId) {
+        const sub = await loadSub(chosenId);
+        if (sub) { startCourse(sub); return; }
+      }
+      showSelection(c);
       return;
     }
-    const err = Machi.validateCourse(course);
-    if (err) { showNoCourse(err); return; }
+
+    startCourse(c);
+  }
+
+  async function loadSub(id) {
+    try {
+      const res = await fetch('courses/' + id + '.json');
+      if (res.ok) return await res.json();
+    } catch (e) {}
+    return null;
+  }
+
+  function startCourse(c) {
+    course = c;
+    const verr = Machi.validateCourse(course);
+    if (verr) { showNoCourse(verr); return; }
 
     progress = Machi.loadProgress(course.id);
-    Machi.saveLastCourse(course); // ホーム画面起動時に再開できるよう保存
+    Machi.saveLastCourse(selector || course);
     $('courseTitle').textContent = course.title || 'まちあるき学習';
     applyFont();
 
-    initMap();
+    // 写真必須コース（午後の散策）は GPSが本番なので練習モードを隠す
+    if (course.requirePhoto) $('testToggle').style.display = 'none';
+
+    $('selectScreen').classList.remove('open');
+    if (!map) initMap(); else { renderMarkers(); }
     renderMarkers();
     if (hasKeyword()) {
       $('keywordBtn').style.display = '';
       updateLettersBar();
     }
     updateProgress();
-    bindUI();
+    if (!started) { bindUI(); started = true; }
     maybeShowOnboarding();
   }
 
@@ -118,7 +148,7 @@
 
   /* ---------------- 進捗 ---------------- */
   function isComplete(spot) {
-    return Machi.isSpotComplete(spot, Machi.getSpotProgress(progress, spot.id));
+    return Machi.isSpotComplete(spot, Machi.getSpotProgress(progress, spot.id), course);
   }
 
   function updateProgress() {
@@ -168,6 +198,7 @@
     $('helpBtn').addEventListener('click', () => { closeMenu(); showOnboarding(true); });
     $('settingsBtn').addEventListener('click', () => { closeMenu(); openSettings(); });
     $('callBtn').addEventListener('click', () => { closeMenu(); openCall(); });
+    if (selector) { $('changeBtn').style.display = ''; $('changeBtn').addEventListener('click', changeCourse); }
 
     // 設定
     $('settingsClose').addEventListener('click', () => $('settingsModal').classList.remove('open'));
@@ -251,12 +282,18 @@
       const radius = spot.radius || 40;
       if (!sp.arrived && d <= radius) {
         sp.arrived = true;
+        sp.arrivedAt = nowStamp(); // 到着時刻を記録（証拠）
         Machi.saveProgress(course.id, progress);
         refreshMarker(spot.id);
         popMarker(spot.id);
         updateProgress();
         Machi.sound('arrive'); Machi.vibrate([120, 60, 120]); Machi.confetti({ count: 90 });
-        toast('「' + spot.name + '」に到着！🎉');
+        if (course.requirePhoto) {
+          toast('「' + spot.name + '」に到着！📷 写真をとって記録しよう');
+          openSheet(spot.id); // 写真をとれるように自動で開く
+        } else {
+          toast('「' + spot.name + '」に到着！🎉');
+        }
       }
     });
   }
@@ -339,11 +376,19 @@
     const d = distanceTo(spot);
     const idx = course.spots.findIndex((s) => s.id === spot.id);
 
+    const photographed = !!(sp.photoKeys && sp.photoKeys.length);
+    const needPhoto = !!course.requirePhoto;
+
     let html = '';
     html += '<h2>' + (idx + 1) + '. ' + Machi.esc(spot.name) + '</h2>';
     html += sp.arrived
-      ? '<span class="badge arrived">到着ずみ ✓</span>'
+      ? '<span class="badge arrived">到着 ✓' + (sp.arrivedAt ? ' ' + timeOf(sp.arrivedAt) : '') + '</span>'
       : '<span class="badge locked">未到着</span>';
+    if (needPhoto) {
+      html += photographed
+        ? '<span class="badge arrived">📷 記録ずみ</span>'
+        : '<span class="badge dist">📷 写真がまだ</span>';
+    }
     html += '<span class="badge dist" id="distBadge">' +
       (d != null ? 'あと約 ' + d + ' m' : '距離: 不明') + '</span>';
 
@@ -354,10 +399,19 @@
     }
 
     if (!unlocked) {
-      html += '<div class="section"><div class="locked-note">📍 このスポットに近づくと、課題とクイズができるようになります。' +
-        '<br>（試しに使うときは下の「練習モード」をON）</div></div>';
+      const lockMsg = needPhoto
+        ? '📍 このスポットに<b>GPSで近づくと</b>、写真をとって記録できるようになります。実際に行ってみよう！'
+        : '📍 このスポットに近づくと、課題とクイズができるようになります。<br>（試しに使うときは下の「練習モード」をON）';
+      html += '<div class="section"><div class="locked-note">' + lockMsg + '</div></div>';
       $('sheetContent').innerHTML = html;
       return;
+    }
+
+    // 写真必須コース：記録の状態を案内
+    if (needPhoto) {
+      html += photographed
+        ? '<div class="section"><div class="quiz-result ok">✓ このスポットは記録できました！</div></div>'
+        : '<div class="section"><div class="locked-note">📷 ここで写真を1まいとると「記録完了」になります。</div></div>';
     }
 
     // 課題（写真・メモ）
@@ -425,13 +479,28 @@
         if (!file) return;
         toast('写真を保存中…');
         try {
+          const wasComplete = isComplete(spot);
           const dataUrl = await Machi.compressImage(file, 1000, 0.7);
           const key = Machi.uid('photo');
           await Machi.savePhoto(key, dataUrl);
           sp.photoKeys.push(key);
+          if (!sp.photoAt) sp.photoAt = nowStamp();
           Machi.saveProgress(course.id, progress);
           loadPhotos(spot, sp);
-          toast('写真を保存しました 📷');
+          refreshMarker(spot.id);
+          updateProgress();
+          renderSheet();
+          // 写真でスポットが「記録完了」になった瞬間を祝う
+          if (!wasComplete && isComplete(spot)) {
+            popMarker(spot.id);
+            Machi.sound('correct'); Machi.vibrate([100, 50, 100]); Machi.confetti({ count: 80 });
+            toast('記録できました！📷✓');
+            if (course.spots.every(isComplete)) {
+              setTimeout(() => { closeSheet(); openGoal(true); }, 700);
+            }
+          } else {
+            toast('写真を保存しました 📷');
+          }
         } catch (err) {
           toast('写真の保存に失敗しました');
         }
@@ -490,10 +559,33 @@
   /* ---------------- ゴール／キーワード画面 ---------------- */
   function openGoal(celebrate) {
     const done = course.spots.every(isComplete);
+
+    // 午後の散策（キーワードなし）＝完走おめでとう＋記録を見せる
+    if (!hasKeyword()) {
+      const doneN = course.spots.filter(isComplete).length;
+      let h = '<button class="btn small secondary" id="goalClose" style="width:auto;">← もどる</button>';
+      h += '<div class="goal-hero">' + (done ? '🎉🎊' : '🚶') + '</div>';
+      h += '<div class="goal-title">' + (done ? 'ぜんぶ回ったね！おつかれさま！' : 'いまの記録') + '</div>';
+      h += '<div class="goal-card"><div class="score-big">' + doneN + ' / ' + course.spots.length + '</div>スポットを記録（到着＋写真）</div>';
+      if (course.goalText) h += '<div class="goal-card" style="background:#fff3d6;border-color:#ffe6a8;">🏁 ' + Machi.esc(course.goalText) + '</div>';
+      h += '<button class="btn" id="goalReview" style="margin-top:8px;">📋 さんぽの記録を見る（先生に見せよう）</button>';
+      if (course.contact) h += '<div class="goal-contact">こまったら… ' + Machi.esc(course.contact) + '</div>';
+      $('goalContent').innerHTML = h;
+      $('goalOverlay').classList.add('open');
+      $('goalClose').addEventListener('click', () => $('goalOverlay').classList.remove('open'));
+      $('goalReview').addEventListener('click', () => { $('goalOverlay').classList.remove('open'); openReview(); });
+      if (done && celebrate) {
+        Machi.sound('goal'); Machi.vibrate([200, 80, 200, 80, 300]);
+        Machi.confetti({ count: 220 });
+        setTimeout(() => Machi.confetti({ count: 160 }), 600);
+      }
+      return;
+    }
+
     const letterSpots = course.spots.filter((s) => s.collectLetter);
     const cells = letterSpots.map((s) => {
       const sp = Machi.getSpotProgress(progress, s.id);
-      const got = Machi.isSpotComplete(s, sp);
+      const got = Machi.isSpotComplete(s, sp, course);
       return '<div class="kc' + (got ? '' : ' empty') + '">' + (got ? Machi.esc(s.collectLetter) : '?') + '</div>';
     }).join('');
     const remaining = course.spots.filter((s) => !isComplete(s)).length;
@@ -557,6 +649,51 @@
   function showOnboarding() { onbIdx = 0; renderOnb(); $('onboarding').classList.add('open'); }
   function maybeShowOnboarding() { if (!localStorage.getItem('machi:onboarded')) showOnboarding(); }
 
+  /* ---------------- 午後コース選択（A・B・C） ---------------- */
+  function showSelection(sel) {
+    let html = '<div class="select-inner">';
+    html += '<h1 class="select-title">' + Machi.esc(sel.title) + '</h1>';
+    if (sel.description) html += '<p class="select-desc">' + Machi.esc(sel.description) + '</p>';
+    html += '<p class="select-lead">⬇ コースを1つえらんでね（あとで変えられるよ）</p>';
+    sel.choose.forEach((opt) => {
+      const done = courseDone(opt.id);
+      html += '<button class="select-card" data-sub="' + opt.id + '" style="border-color:' + (opt.color || '#1f7a5a') + ';">' +
+        '<div class="select-emoji" style="background:' + (opt.color || '#1f7a5a') + ';">' + (opt.emoji || '🚶') + '</div>' +
+        '<div class="select-body"><div class="select-name">' + Machi.esc(opt.label) + '：' + Machi.esc(opt.theme) +
+        (done ? ' <span class="select-done">✓記録あり</span>' : '') + '</div>' +
+        '<div class="select-sub">' + Machi.esc(opt.desc || '') + '</div>' +
+        '<div class="select-dist">🚶 ' + Machi.esc(opt.distance || '') + '</div></div>' +
+        '<div class="select-go">えらぶ →</div></button>';
+    });
+    html += '<p class="muted" style="margin-top:14px;">えらんだコースのスポットに行って<b>写真をとる</b>と、記録がのこるよ。13:50までに守礼門にもどろう！</p>';
+    html += '</div>';
+    $('selectScreen').innerHTML = html;
+    $('selectScreen').classList.add('open');
+    document.querySelectorAll('.select-card').forEach((b) => {
+      b.addEventListener('click', async () => {
+        Machi.sound('tap');
+        const id = b.dataset.sub;
+        localStorage.setItem('machi:chosen:' + sel.id, id);
+        const sub = await loadSub(id);
+        if (sub) startCourse(sub);
+        else toast('コースを読み込めませんでした');
+      });
+    });
+  }
+
+  // そのサブコースに記録（到着）が1つでもあるか
+  function courseDone(subId) {
+    const p = Machi.loadProgress(subId);
+    return Object.values(p.spots || {}).some((s) => s.arrived);
+  }
+
+  function changeCourse() {
+    if (!selector) return;
+    if (!confirm('コースを変えますか？\n（今のコースの記録はそのまま残ります）')) return;
+    closeMenu();
+    showSelection(selector);
+  }
+
   /* ---------------- 設定 ---------------- */
   function syncSettingsUI() {
     document.querySelectorAll('#fontSeg button').forEach((b) => b.classList.toggle('on', b.dataset.font === Machi.settings.font));
@@ -593,10 +730,13 @@
     const quizOk = quizzes.filter((s) => Machi.getSpotProgress(progress, s.id).quizCorrect === true);
 
     const allDone = done === total && total > 0;
+    const proof = !!course.requirePhoto; // 午後の散策＝証拠記録モード
+    const studentName = localStorage.getItem('machi:studentName') || '';
+
     let html = '<div class="review-card" style="text-align:center;">';
-    if (allDone) html += '<div class="medal">🏅</div><div style="font-weight:800;color:#1f7a5a;margin-bottom:6px;">ぜんぶクリア！おつかれさま！</div>';
-    html += '<div>クリアしたスポット</div><div class="score-big">' + done + ' / ' + total + '</div>';
-    // スタンプ帳
+    if (allDone) html += '<div class="medal">🏅</div><div style="font-weight:800;color:#1f7a5a;margin-bottom:6px;">ぜんぶ回ったね！おつかれさま！</div>';
+    html += '<div style="font-weight:700;">' + Machi.esc(course.title || '') + '</div>';
+    html += '<div style="margin-top:6px;">' + (proof ? '記録したスポット（到着＋写真）' : 'クリアしたスポット') + '</div><div class="score-big">' + done + ' / ' + total + '</div>';
     html += '<div class="stamp-row" style="justify-content:center;">' +
       course.spots.map((s, i) => '<div class="stamp' + (isComplete(s) ? ' done' : '') + '">' +
         (isComplete(s) ? '✓' : (i + 1)) + '</div>').join('') + '</div>';
@@ -606,21 +746,62 @@
     }
     html += '</div>';
 
+    // 名前（先生が確認しやすいように）
+    html += '<div class="review-card"><label style="font-weight:700;font-size:14px;">なまえ（クラス・番号）</label>' +
+      '<input id="nameInput" class="memo" style="min-height:auto;" placeholder="例：3年1組 12番 ○○" value="' + Machi.esc(studentName) + '"></div>';
+
+    if (proof) {
+      html += '<div class="review-card" style="background:#fff8e6;border-color:#ffe6a8;">📋 この画面が「行ったしるし」です。<b>守礼門にもどったら、先生に見せよう。</b><br><span class="muted">スポットに着いて写真をとると、到着の時こくと写真がのこります。</span></div>';
+    }
+
     for (const spot of course.spots) {
       const sp = Machi.getSpotProgress(progress, spot.id);
       const idx = course.spots.indexOf(spot);
-      html += '<div class="review-card"><h3>' + (idx + 1) + '. ' + Machi.esc(spot.name) + ' ' +
-        (sp.arrived ? '✓' : '<span class="muted">未到着</span>') + '</h3>';
+      const photographed = !!(sp.photoKeys && sp.photoKeys.length);
+      let mark;
+      if (isComplete(spot)) mark = '<span style="color:#1f7a5a;font-weight:700;">✓ 記録ずみ' + (sp.arrivedAt ? ' ' + timeOf(sp.arrivedAt) : '') + '</span>';
+      else if (sp.arrived) mark = '<span style="color:#b06f00;font-weight:700;">到着' + (sp.arrivedAt ? ' ' + timeOf(sp.arrivedAt) : '') + (proof ? '・📷写真がまだ' : '') + '</span>';
+      else mark = '<span class="muted">まだ行っていない</span>';
+      html += '<div class="review-card"><h3>' + (idx + 1) + '. ' + Machi.esc(spot.name) + '</h3>';
+      html += '<div style="font-size:14px;margin-bottom:4px;">' + mark + '</div>';
       if (sp.memo) html += '<div class="info-text">📝 ' + Machi.esc(sp.memo) + '</div>';
       if (spot.quiz && spot.quiz.question && sp.quizCorrect != null) {
         html += '<div class="muted">クイズ：' + (sp.quizCorrect ? '正解 ⭕️' : '不正解 ❌') + '</div>';
       }
       html += '<div class="photo-grid" data-photos="' + spot.id + '"></div></div>';
     }
+
+    // 首里で見つけたもの（チェックリスト）
+    if (Array.isArray(course.checklist) && course.checklist.length) {
+      const checked = progress.checklist || {};
+      html += '<div class="review-card"><div class="section-label">🔎 首里で見つけたもの（タップでチェック）</div><div class="chk-row">';
+      course.checklist.forEach((item, i) => {
+        html += '<button class="chk' + (checked[item] ? ' on' : '') + '" data-chk="' + i + '">' +
+          (checked[item] ? '☑ ' : '☐ ') + Machi.esc(item) + '</button>';
+      });
+      html += '</div></div>';
+    }
+
     html += '<button class="btn outline" id="exportBtn" style="margin-top:8px;">記録を書き出す（テキスト）</button>';
 
     $('reviewContent').innerHTML = html;
     $('reviewOverlay').classList.add('open');
+
+    // 名前の保存
+    const nameEl = $('nameInput');
+    if (nameEl) nameEl.addEventListener('input', () => localStorage.setItem('machi:studentName', nameEl.value));
+    // チェックリスト
+    document.querySelectorAll('.chk[data-chk]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const item = course.checklist[parseInt(b.dataset.chk, 10)];
+        progress.checklist = progress.checklist || {};
+        progress.checklist[item] = !progress.checklist[item];
+        Machi.saveProgress(course.id, progress);
+        Machi.sound('tap');
+        b.classList.toggle('on', !!progress.checklist[item]);
+        b.textContent = (progress.checklist[item] ? '☑ ' : '☐ ') + item;
+      });
+    });
 
     // 写真ロード
     for (const spot of course.spots) {
@@ -639,20 +820,40 @@
   }
 
   function exportText() {
-    let txt = '【' + (course.title || 'まちあるき') + '】ふりかえり記録\n\n';
+    const name = localStorage.getItem('machi:studentName') || '';
+    let txt = '【' + (course.title || 'まちあるき') + '】記録\n';
+    if (name) txt += 'なまえ: ' + name + '\n';
+    txt += '\n';
     course.spots.forEach((spot, i) => {
       const sp = Machi.getSpotProgress(progress, spot.id);
-      txt += (i + 1) + '. ' + spot.name + (sp.arrived ? '（到着）' : '（未到着）') + '\n';
+      const state = isComplete(spot) ? '記録ずみ' : (sp.arrived ? '到着（写真なし）' : '未到着');
+      txt += (i + 1) + '. ' + spot.name + '：' + state;
+      if (sp.arrivedAt) txt += '（' + sp.arrivedAt + '）';
+      txt += '\n';
+      if (sp.photoKeys && sp.photoKeys.length) txt += '  写真: ' + sp.photoKeys.length + 'まい\n';
       if (sp.memo) txt += '  メモ: ' + sp.memo + '\n';
       if (spot.quiz && sp.quizCorrect != null) txt += '  クイズ: ' + (sp.quizCorrect ? '正解' : '不正解') + '\n';
-      txt += '\n';
     });
+    if (Array.isArray(course.checklist) && course.checklist.length) {
+      const checked = progress.checklist || {};
+      const got = course.checklist.filter((it) => checked[it]);
+      txt += '\n見つけたもの: ' + (got.length ? got.join('、') : '（なし）') + '\n';
+    }
     const blob = new Blob([txt], { type: 'text/plain' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = (course.title || 'machiaruki') + '_記録.txt';
     a.click();
   }
+
+  /* ---------------- 時刻 ---------------- */
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function nowStamp() {
+    const d = new Date();
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) +
+      ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+  function timeOf(stamp) { return stamp ? stamp.slice(11) : ''; } // HH:MM
 
   /* ---------------- トースト ---------------- */
   let toastTimer = null;

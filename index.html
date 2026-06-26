@@ -43,6 +43,7 @@
     <div class="sheet-handle"></div>
     <button class="menu-item" id="keywordBtn" style="display:none;"><span>🔑</span> キーワードを見る</button>
     <button class="menu-item" id="reviewBtn"><span>📔</span> ふりかえり・記録</button>
+    <button class="menu-item" id="changeBtn" style="display:none;"><span>🔀</span> コースを変える（A・B・C）</button>
     <button class="menu-item" id="helpBtn"><span>📖</span> つかいかた</button>
     <button class="menu-item" id="settingsBtn"><span>⚙️</span> 文字サイズ・音</button>
     <button class="menu-item danger" id="callBtn"><span>☎️</span> こまったら先生へ</button>
@@ -102,6 +103,9 @@
   <div class="modal-backdrop" id="callModal">
     <div class="modal" id="callContent"></div>
   </div>
+
+  <!-- 午後コース選択（A・B・C） -->
+  <div class="overlay select-screen" id="selectScreen"></div>
 
   <canvas id="fxCanvas"></canvas>
   <div class="toast" id="toast"></div>

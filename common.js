@@ -171,8 +171,12 @@
   // ミッション/スポットが「クリア」かどうか
   //  - クイズあり: 正解したらクリア
   //  - クイズなし: GPS到着でクリア
-  Machi.isSpotComplete = function (spot, sp) {
+  Machi.isSpotComplete = function (spot, sp, course) {
     if (Machi.hasQuiz(spot)) return sp.quizCorrect === true;
+    // 写真必須コース（午後の散策）: GPS到着＋写真でクリア＝「行った証拠」
+    if (course && course.requirePhoto && spot.requirePhoto !== false) {
+      return sp.arrived === true && !!(sp.photoKeys && sp.photoKeys.length);
+    }
     return sp.arrived === true;
   };
 
@@ -181,7 +185,7 @@
     return course.spots.map(function (spot) {
       if (!spot.collectLetter) return null;
       const sp = Machi.getSpotProgress(progress, spot.id);
-      return Machi.isSpotComplete(spot, sp) ? spot.collectLetter : null;
+      return Machi.isSpotComplete(spot, sp, course) ? spot.collectLetter : null;
     });
   };
 
