@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QRコード作成 - まちあるき学習</title>
+  <link rel="stylesheet" href="app.css" />
+  <style>
+    .wrap { max-width: 640px; margin: 0 auto; padding: 20px 16px 60px; }
+    .qr-card { background:#fff; border:1px solid var(--c-line); border-radius:var(--radius); padding:20px; text-align:center; margin-top:16px; box-shadow:var(--shadow); }
+    #qrcode { display:inline-block; margin:10px auto; }
+    #qrcode img, #qrcode canvas { width:240px !important; height:240px !important; }
+    .url-show { word-break:break-all; font-size:13px; color:var(--c-muted); margin-top:8px; }
+    .preset { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+    .preset button { flex:1; min-width:160px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 style="color:#1f7a5a;">📱 QRコード作成</h1>
+    <p class="muted">生徒に配るQRコードを作ります。下のボタンを押すか、URLを貼り付けてください。スマホでよみとると、そのコースが開きます。</p>
+
+    <div class="preset">
+      <button class="btn primary small" data-url="index.html?course=shuri-walkrally">🟡 午前：首里 わくわくウォークラリー</button>
+      <button class="btn primary small" data-url="index.html?course=shuri-afternoon">🟢 午後：首里の町 さんぽ</button>
+      <button class="btn secondary small" data-url="editor.html">🛠 先生用エディタ</button>
+    </div>
+
+    <div class="field">
+      <label>URL（自由入力）</label>
+      <input id="urlInput" placeholder="https://… または index.html?course=…" />
+    </div>
+    <button class="btn primary" id="makeBtn">このURLのQRコードを作る</button>
+
+    <div class="qr-card" id="card" style="display:none;">
+      <div id="title" style="font-weight:700;margin-bottom:6px;"></div>
+      <div id="qrcode"></div>
+      <div class="url-show" id="urlShow"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn secondary small" id="copyBtn">🔗 リンクをコピー</button>
+        <button class="btn outline small" id="dlBtn">⬇ 画像を保存</button>
+        <button class="btn secondary small" id="printBtn">🖨 印刷</button>
+      </div>
+      <p class="muted" style="margin-top:10px;">印刷して掲示したり、スライドに貼り付けて配布できます。</p>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    function absUrl(u) {
+      if (/^https?:\/\//.test(u)) return u;
+      const base = location.href.replace(/qr\.html.*$/, '');
+      return base + u.replace(/^\//, '');
+    }
+    let lastUrl = '';
+    let lastDataUrl = '';
+    function makeQR(url, title) {
+      const full = absUrl(url.trim());
+      lastUrl = full;
+      const qr = qrcode(0, 'M');
+      qr.addData(full);
+      qr.make();
+      lastDataUrl = qr.createDataURL(6, 8);
+      $('qrcode').innerHTML = '<img src="' + lastDataUrl + '" alt="QRコード">';
+      $('title').textContent = title || '';
+      $('urlShow').textContent = full;
+      $('card').style.display = 'block';
+      $('card').scrollIntoView({ behavior: 'smooth' });
+    }
+    document.querySelectorAll('.preset button').forEach((b) => {
+      b.addEventListener('click', () => makeQR(b.dataset.url, b.textContent));
+    });
+    $('makeBtn').addEventListener('click', () => {
+      const v = $('urlInput').value.trim();
+      if (!v) { toast('URLを入力してください'); return; }
+      makeQR(v, '');
+    });
+    $('copyBtn').addEventListener('click', () => {
+      navigator.clipboard && navigator.clipboard.writeText(lastUrl);
+      toast('リンクをコピーしました');
+    });
+    $('dlBtn').addEventListener('click', () => {
+      if (!lastDataUrl) return;
+      const a = document.createElement('a');
+      a.href = lastDataUrl; a.download = 'qrcode.gif'; a.click();
+    });
+    $('printBtn').addEventListener('click', () => window.print());
+    let tt;
+    function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove('show'),2200); }
+  </script>
+</body>
+</html>
