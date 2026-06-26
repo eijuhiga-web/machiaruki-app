@@ -72,6 +72,9 @@
       const bounds = L.latLngBounds(course.spots.map((s) => [s.lat, s.lng]));
       map.fitBounds(bounds, { padding: [50, 50] });
     }
+    // 画面サイズ確定後にタイルを再計算（表示崩れ防止）
+    setTimeout(() => map.invalidateSize(), 200);
+    window.addEventListener('resize', () => map.invalidateSize());
   }
 
   function spotIcon(spot, idx) {
