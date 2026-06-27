@@ -362,6 +362,7 @@
         popMarker(spot.id);
         updateProgress();
         Machi.sound('arrive'); Machi.vibrate([120, 60, 120]); Machi.confetti({ count: 90 });
+        sendCheckpointEvent(spot, '到着'); // 先生のダッシュボードに即送信
         if (course.requirePhoto) {
           toast('「' + spot.name + '」に到着！📷 写真をとって記録しよう');
           openSheet(spot.id); // 写真をとれるように自動で開く
@@ -369,6 +370,19 @@
           toast('「' + spot.name + '」に到着！🎉');
         }
       }
+    });
+  }
+
+  // チェックポイント到達/写真を先生のダッシュボードへ即送信（GPS常時追跡はしない）
+  function sendCheckpointEvent(spot, state) {
+    const stu = Machi.getStudent();
+    if (!stu.name && !stu.team) return; // 誰のかわからない時は送らない
+    Machi.sendCheckpoint({
+      name: stu.name, team: stu.team, grade: stu.grade,
+      courseId: course.id, courseTitle: course.title || '',
+      spot: spot.name, state: state,
+      lat: lastPos ? +lastPos.lat.toFixed(6) : '',
+      lng: lastPos ? +lastPos.lng.toFixed(6) : '',
     });
   }
 
@@ -560,6 +574,7 @@
           sp.photoKeys.push(key);
           if (!sp.photoAt) sp.photoAt = nowStamp();
           Machi.saveProgress(course.id, progress);
+          sendCheckpointEvent(spot, '写真'); // 先生のダッシュボードに即送信
           loadPhotos(spot, sp);
           refreshMarker(spot.id);
           updateProgress();

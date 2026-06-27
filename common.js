@@ -393,12 +393,29 @@
   Machi.submitToTeacher = function (payload) {
     const cfg = global.MACHI_CONFIG || {};
     if (!cfg.submitUrl) return Promise.reject(new Error('NO_URL'));
+    payload.type = 'final';
     return fetch(cfg.submitUrl, {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload),
     });
+  };
+
+  /* チェックポイント到達を“その場で”送信（先生のダッシュボード用）。
+     失敗してもアプリは止めない（静かに無視）。 */
+  Machi.sendCheckpoint = function (payload) {
+    const cfg = global.MACHI_CONFIG || {};
+    if (!cfg.submitUrl) return;
+    payload.type = 'checkpoint';
+    try {
+      fetch(cfg.submitUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload),
+      }).catch(function () {});
+    } catch (e) {}
   };
 
   global.Machi = Machi;
