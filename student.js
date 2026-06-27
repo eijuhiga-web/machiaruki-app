@@ -234,6 +234,8 @@
     $('menuBackdrop').addEventListener('click', closeMenu);
     $('helpBtn').addEventListener('click', () => { closeMenu(); showOnboarding(true); });
     $('profileBtn').addEventListener('click', () => { closeMenu(); showProfile(); });
+    $('menuUser').addEventListener('click', () => { closeMenu(); showProfile(); });
+    $('resetBtn').addEventListener('click', doReset);
     $('settingsBtn').addEventListener('click', () => { closeMenu(); openSettings(); });
     $('callBtn').addEventListener('click', () => { closeMenu(); openCall(); });
     if (selector) { $('changeBtn').style.display = ''; $('changeBtn').addEventListener('click', changeCourse); }
@@ -258,8 +260,42 @@
   }
 
   /* ---------------- メニュー ---------------- */
-  function openMenu() { $('menuPanel').classList.add('open'); $('menuBackdrop').classList.add('open'); }
+  function refreshMenuUser() {
+    const s = Machi.getStudent();
+    const el = $('menuUser');
+    if (!el) return;
+    if (s.name) {
+      el.classList.remove('none');
+      const sub = [s.grade, s.team].filter(Boolean).join('・');
+      el.innerHTML = '<span>👤</span> ' + Machi.esc(s.name) +
+        (sub ? ' <span class="sub">' + Machi.esc(sub) + '</span>' : '') +
+        '<span class="edit">なおす ✏️</span>';
+    } else {
+      el.classList.add('none');
+      el.innerHTML = '<span>👤</span> なまえ未入力（タップで入力）';
+    }
+  }
+  function openMenu() { refreshMenuUser(); $('menuPanel').classList.add('open'); $('menuBackdrop').classList.add('open'); }
   function closeMenu() { $('menuPanel').classList.remove('open'); $('menuBackdrop').classList.remove('open'); }
+
+  /* ---------------- リセット（最初からやりなおす） ---------------- */
+  async function doReset() {
+    closeMenu();
+    if (!confirm('この記録をぜんぶ消して、最初からやりなおします。\nよろしいですか？\n（名前はそのまま残ります）')) return;
+    // 写真を削除
+    try {
+      const keys = [];
+      Object.keys(progress.spots || {}).forEach((id) => {
+        (progress.spots[id].photoKeys || []).forEach((k) => keys.push(k));
+      });
+      for (const k of keys) { await Machi.deletePhoto(k); }
+    } catch (e) {}
+    localStorage.removeItem(Machi.progressKey(course.id));
+    localStorage.removeItem('machi:submitted:' + course.id);
+    Machi.sound('tap');
+    toast('リセットしました。最初からどうぞ！');
+    setTimeout(() => location.reload(), 500);
+  }
 
   /* ---------------- 端末の方位（コンパス） ---------------- */
   let heading = null; // 度（北=0）

@@ -249,6 +249,15 @@ textarea.memo { min-height: 80px; resize: vertical; }
 .menu-item span { font-size: 22px; }
 .menu-item.danger { color: #c0392b; }
 .menu-item:active { background: #f3f4f2; }
+.menu-user {
+  width: 100%; text-align: left; cursor: pointer;
+  background: #eef7f2; border: 1px solid var(--c-line); border-radius: 12px;
+  padding: 12px 14px; margin: 4px 0 6px; font-size: 16px; font-weight: 800; color: var(--c-primary);
+  display: flex; align-items: center; gap: 8px;
+}
+.menu-user .sub { font-weight: 600; color: var(--c-muted); font-size: 13px; }
+.menu-user .edit { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--c-muted); }
+.menu-user.none { color: #c0392b; background: #fbeae9; }
 
 /* 次はここ！ナビバナー */
 .nav-banner {
