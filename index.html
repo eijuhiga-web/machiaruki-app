@@ -43,6 +43,7 @@
     <div class="sheet-handle"></div>
     <button class="menu-item" id="keywordBtn" style="display:none;"><span>🔑</span> キーワードを見る</button>
     <button class="menu-item" id="reviewBtn"><span>📔</span> ふりかえり・記録</button>
+    <button class="menu-item" id="profileBtn"><span>✏️</span> 名前・学年</button>
     <button class="menu-item" id="changeBtn" style="display:none;"><span>🔀</span> コースを変える（A・B・C）</button>
     <button class="menu-item" id="helpBtn"><span>📖</span> つかいかた</button>
     <button class="menu-item" id="settingsBtn"><span>⚙️</span> 文字サイズ・音</button>
@@ -104,6 +105,22 @@
     <div class="modal" id="callContent"></div>
   </div>
 
+  <!-- 名前・学年（プロフィール） -->
+  <div class="modal-backdrop" id="profileModal">
+    <div class="modal">
+      <h2 style="margin-top:0;">✏️ なまえを入力してね</h2>
+      <p class="muted" style="margin-top:0;">先生が記録を確認するために使います。</p>
+      <div class="field"><label>なまえ（ひっす）</label><input id="pfName" placeholder="例：比嘉 太郎"></div>
+      <div class="field"><label>学年</label>
+        <div class="seg" id="pfGradeSeg">
+          <button data-grade="1年">1年</button><button data-grade="2年">2年</button><button data-grade="3年">3年</button>
+        </div>
+      </div>
+      <div class="field"><label>班・チーム名</label><input id="pfTeam" placeholder="例：A班 / さくらチーム"></div>
+      <button class="btn" id="pfSave" style="margin-top:6px;">この名前ではじめる</button>
+    </div>
+  </div>
+
   <!-- 午後コース選択（A・B・C） -->
   <div class="overlay select-screen" id="selectScreen"></div>
 
@@ -112,6 +129,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+  <script src="config.js"></script>
   <script src="common.js"></script>
   <script src="student.js"></script>
   <script>

@@ -17,11 +17,16 @@
   let navTargetId = null;     // 「次はここ！」の対象スポット
   let selector = null;        // コース選択（午後A/B/C）の親コース
   let started = false;        // startCourse済みか（bindUIを一度だけ）
+  let pfGrade = '';           // プロフィール入力中の学年
+  let profileBound = false;   // プロフィール配線を一度だけ
 
   /* ---------------- 初期化 ---------------- */
   async function init() {
     const c = await Machi.getCourseFromURL();
     if (!c) { showNoCourse(); return; }
+
+    bindProfile();
+    ensureProfile(); // 名前が未入力なら最初に入力してもらう
 
     // 選択モード（午後 A・B・C）
     if (c.selectMode && Array.isArray(c.choose)) {
@@ -75,6 +80,38 @@
   function applyFont() {
     document.body.classList.toggle('font-large', Machi.settings.font === 'large');
   }
+
+  /* ---------------- 名前・学年・班（プロフィール） ---------------- */
+  function bindProfile() {
+    if (profileBound) return;
+    profileBound = true;
+    document.querySelectorAll('#pfGradeSeg button').forEach((b) =>
+      b.addEventListener('click', () => {
+        pfGrade = b.dataset.grade;
+        document.querySelectorAll('#pfGradeSeg button').forEach((x) => x.classList.toggle('on', x === b));
+      }));
+    $('pfSave').addEventListener('click', () => {
+      const name = $('pfName').value.trim();
+      if (!name) { toast('なまえを入力してね'); $('pfName').focus(); return; }
+      Machi.saveStudent({ name: name, grade: pfGrade, team: $('pfTeam').value.trim() });
+      $('profileModal').classList.remove('open');
+      Machi.sound('tap');
+    });
+    // 背景タップは「名前が入っている時だけ」閉じられる
+    $('profileModal').addEventListener('click', (e) => {
+      if (e.target.id === 'profileModal' && Machi.getStudent().name) $('profileModal').classList.remove('open');
+    });
+  }
+
+  function showProfile() {
+    const s = Machi.getStudent();
+    $('pfName').value = s.name;
+    $('pfTeam').value = s.team;
+    pfGrade = s.grade;
+    document.querySelectorAll('#pfGradeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.grade === s.grade));
+    $('profileModal').classList.add('open');
+  }
+  function ensureProfile() { if (!Machi.getStudent().name) showProfile(); }
 
   function showNoCourse(msg) {
     document.querySelector('.app').innerHTML =
@@ -196,6 +233,7 @@
     $('menuBtn').addEventListener('click', openMenu);
     $('menuBackdrop').addEventListener('click', closeMenu);
     $('helpBtn').addEventListener('click', () => { closeMenu(); showOnboarding(true); });
+    $('profileBtn').addEventListener('click', () => { closeMenu(); showProfile(); });
     $('settingsBtn').addEventListener('click', () => { closeMenu(); openSettings(); });
     $('callBtn').addEventListener('click', () => { closeMenu(); openCall(); });
     if (selector) { $('changeBtn').style.display = ''; $('changeBtn').addEventListener('click', changeCourse); }
@@ -731,7 +769,8 @@
 
     const allDone = done === total && total > 0;
     const proof = !!course.requirePhoto; // 午後の散策＝証拠記録モード
-    const studentName = localStorage.getItem('machi:studentName') || '';
+    const stu = Machi.getStudent();
+    const submittedAt = localStorage.getItem('machi:submitted:' + course.id) || '';
 
     let html = '<div class="review-card" style="text-align:center;">';
     if (allDone) html += '<div class="medal">🏅</div><div style="font-weight:800;color:#1f7a5a;margin-bottom:6px;">ぜんぶ回ったね！おつかれさま！</div>';
@@ -746,9 +785,11 @@
     }
     html += '</div>';
 
-    // 名前（先生が確認しやすいように）
-    html += '<div class="review-card"><label style="font-weight:700;font-size:14px;">なまえ（クラス・番号）</label>' +
-      '<input id="nameInput" class="memo" style="min-height:auto;" placeholder="例：3年1組 12番 ○○" value="' + Machi.esc(studentName) + '"></div>';
+    // 名前・学年・班（先生が確認しやすいように）
+    html += '<div class="review-card"><div style="display:flex;align-items:center;gap:8px;">' +
+      '<div style="flex:1;"><div style="font-weight:700;">👤 ' + (Machi.esc(stu.name) || '<span style="color:#c0392b;">なまえ未入力</span>') + '</div>' +
+      '<div class="muted">' + Machi.esc([stu.grade, stu.team].filter(Boolean).join(' / ') || 'タップして学年・班を入力') + '</div></div>' +
+      '<button class="btn small secondary" id="editProfileBtn" style="width:auto;">なおす</button></div></div>';
 
     if (proof) {
       html += '<div class="review-card" style="background:#fff8e6;border-color:#ffe6a8;">📋 この画面が「行ったしるし」です。<b>守礼門にもどったら、先生に見せよう。</b><br><span class="muted">スポットに着いて写真をとると、到着の時こくと写真がのこります。</span></div>';
@@ -782,14 +823,18 @@
       html += '</div></div>';
     }
 
+    const sentLabel = submittedAt ? '✅ 送信ずみ（' + submittedAt.slice(11) + '）— もう一度送る' : '📤 先生に送信する';
+    html += '<button class="btn" id="submitBtn" style="margin-top:8px;">' + sentLabel + '</button>';
     html += '<button class="btn outline" id="exportBtn" style="margin-top:8px;">記録を書き出す（テキスト）</button>';
 
     $('reviewContent').innerHTML = html;
     $('reviewOverlay').classList.add('open');
 
-    // 名前の保存
-    const nameEl = $('nameInput');
-    if (nameEl) nameEl.addEventListener('input', () => localStorage.setItem('machi:studentName', nameEl.value));
+    // プロフィール編集・先生に送信
+    const ep = $('editProfileBtn');
+    if (ep) ep.addEventListener('click', showProfile);
+    const sb = $('submitBtn');
+    if (sb) sb.addEventListener('click', doSubmit);
     // チェックリスト
     document.querySelectorAll('.chk[data-chk]').forEach((b) => {
       b.addEventListener('click', () => {
@@ -819,8 +864,59 @@
     $('exportBtn').addEventListener('click', exportText);
   }
 
+  /* ---------------- 先生に送信（スプレッドシート） ---------------- */
+  function buildPayload(stu) {
+    const total = course.spots.length;
+    const done = course.spots.filter(isComplete).length;
+    const quizzes = course.spots.filter((s) => s.quiz && s.quiz.question);
+    const quizOk = quizzes.filter((s) => Machi.getSpotProgress(progress, s.id).quizCorrect === true).length;
+    const spots = course.spots.map((s, i) => {
+      const sp = Machi.getSpotProgress(progress, s.id);
+      return {
+        n: i + 1, name: s.name,
+        state: isComplete(s) ? '済' : (sp.arrived ? '到着' : '未'),
+        arrivedAt: sp.arrivedAt || '',
+        quiz: (s.quiz && s.quiz.question) ? (sp.quizCorrect === true ? '正解' : (sp.quizCorrect === false ? '不正解' : '')) : '',
+        photos: (sp.photoKeys || []).length,
+        memo: sp.memo || '',
+      };
+    });
+    const spotsSummary = spots.map((x) => x.n + '.' + x.name + '=' + x.state).join(' / ');
+    const memos = spots.filter((x) => x.memo).map((x) => x.name + '：' + x.memo).join(' / ');
+    let keyword = '-';
+    if (hasKeyword()) keyword = course.spots.every(isComplete) ? (course.keyword + '（完成）') : '未完成';
+    const checklist = Array.isArray(course.checklist)
+      ? course.checklist.filter((it) => (progress.checklist || {})[it]) : [];
+    return {
+      ts: nowStamp(), name: stu.name, grade: stu.grade, team: stu.team,
+      courseId: course.id, courseTitle: course.title || '',
+      done: done, total: total, quizOk: quizOk, quizTotal: quizzes.length,
+      keyword: keyword, spots: spots, spotsSummary: spotsSummary, memos: memos, checklist: checklist,
+    };
+  }
+
+  async function doSubmit() {
+    const stu = Machi.getStudent();
+    if (!stu.name) { toast('先に名前を入力してね'); showProfile(); return; }
+    if (!(window.MACHI_CONFIG && window.MACHI_CONFIG.submitUrl)) {
+      toast('先生が「送信先」をまだ設定していません');
+      return;
+    }
+    toast('送信中…');
+    try {
+      await Machi.submitToTeacher(buildPayload(stu));
+      localStorage.setItem('machi:submitted:' + course.id, nowStamp());
+      Machi.sound('correct'); Machi.vibrate([100, 50, 100]); Machi.confetti({ count: 90 });
+      toast('先生に送信しました！🎉');
+      openReview(); // 「送信ずみ」表示に更新
+    } catch (err) {
+      if (String(err && err.message) === 'NO_URL') toast('送信先が未設定です');
+      else toast('送信できませんでした。電波の良い所でもう一度');
+    }
+  }
+
   function exportText() {
-    const name = localStorage.getItem('machi:studentName') || '';
+    const name = Machi.getStudent().name || '';
     let txt = '【' + (course.title || 'まちあるき') + '】記録\n';
     if (name) txt += 'なまえ: ' + name + '\n';
     txt += '\n';

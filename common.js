@@ -369,5 +369,37 @@
     step();
   };
 
+  /* ====================================================
+     生徒プロフィール（名前・学年・班）＝ localStorage
+     ==================================================== */
+  Machi.getStudent = function () {
+    return {
+      name: localStorage.getItem('machi:studentName') || '',
+      grade: localStorage.getItem('machi:studentGrade') || '',
+      team: localStorage.getItem('machi:studentTeam') || '',
+    };
+  };
+  Machi.saveStudent = function (s) {
+    if (s.name != null) localStorage.setItem('machi:studentName', s.name);
+    if (s.grade != null) localStorage.setItem('machi:studentGrade', s.grade);
+    if (s.team != null) localStorage.setItem('machi:studentTeam', s.team);
+  };
+
+  /* ====================================================
+     先生に送信（Googleスプレッドシート / GASウェブアプリ）
+     CORSプリフライトを避けるため text/plain + no-cors で送信。
+     応答は読めないが（不透明）、ネットワーク失敗時は reject される。
+     ==================================================== */
+  Machi.submitToTeacher = function (payload) {
+    const cfg = global.MACHI_CONFIG || {};
+    if (!cfg.submitUrl) return Promise.reject(new Error('NO_URL'));
+    return fetch(cfg.submitUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload),
+    });
+  };
+
   global.Machi = Machi;
 })(window);
